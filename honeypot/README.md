@@ -27,11 +27,13 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
 ### 2. Loading the Module in Redis
 
   **Locate the Module:** Ensure you know the full path to the compiled `honeypot.so` file.
+  
   **Start Redis with the Module:**
     ```bash
     redis-server --loadmodule /path/to/honeypot.so
     ```
     Replace `/path/to/honeypot.so` with the actual path to your module file.
+  
   **Alternative: Load via `redis.conf`:**
     You can also add the following line to your `redis.conf` file:
     ```
