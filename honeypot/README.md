@@ -23,7 +23,7 @@ cd honeypot
 ```bash
 make  
 ```
-    This will create a `honeypot.so` file in the directory and automatically download the redismodule.h library from the official Redis repo, if not present. This library is needed for the module to work.
+This will create a `honeypot.so` file in the directory and automatically download the redismodule.h library from the official Redis repo, if not present. This library is needed for the module to work.
     
 
 ### 2. Loading the Module in Redis
@@ -34,14 +34,14 @@ make
 ```bash
 redis-server --loadmodule /path/to/honeypot.so
 ```
-    Replace `/path/to/honeypot.so` with the actual path to your module file.
+Replace `/path/to/honeypot.so` with the actual path to your module file.
   
   **Alternative: Load via `redis.conf`:**
-    You can also add the following line to your `redis.conf` file:
+You can also add the following line to your `redis.conf` file:
 ```
 loadmodule /path/to/honeypot.so
 ```
-    Then, restart your Redis server.
+Then, restart your Redis server.
 
 ### 3. Testing the Module
 
