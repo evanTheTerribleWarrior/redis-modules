@@ -15,13 +15,13 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
 
   **Clone the Repository:**
     ```bash
-    git clone https://github.com/evanTheTerribleWarrior/redis-modules
-    cd redis-modules
-    cd honeypot
+    git clone https://github.com/evanTheTerribleWarrior/redis-modules  
+    cd redis-modules  
+    cd honeypot  
     ```
   **Compile:**
     ```bash
-    make
+    make  
     ```
     This will create a `honeypot.so` file in the directory and automatically download the redismodule.h library from the official Redis repo, if not present. This library is needed for the module to work.
     
