@@ -11,13 +11,13 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
 
 ### 1. Compiling the Module
 
-**Clone the Repository:**
+  **Clone the Repository:**
     ```bash
     git clone https://github.com/evanTheTerribleWarrior/redis-modules
     cd redis-modules
     cd honeypot
     ```
-**Compile:**
+  **Compile:**
     ```bash
     make
     ```
@@ -26,13 +26,13 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
 
 ### 2. Loading the Module in Redis
 
-**Locate the Module:** Ensure you know the full path to the compiled `honeypot.so` file.
-**Start Redis with the Module:**
+  **Locate the Module:** Ensure you know the full path to the compiled `honeypot.so` file.
+  **Start Redis with the Module:**
     ```bash
     redis-server --loadmodule /path/to/honeypot.so
     ```
     Replace `/path/to/honeypot.so` with the actual path to your module file.
-**Alternative: Load via `redis.conf`:**
+  **Alternative: Load via `redis.conf`:**
     You can also add the following line to your `redis.conf` file:
     ```
     loadmodule /path/to/honeypot.so
@@ -45,9 +45,9 @@ The provided bash script `capture.sh` could be used as an example to test the mo
 
 **Run the test script:**
 
-    ```bash
-    bash capture.sh
-    ```
+```bash
+bash capture.sh
+```
 
 **Generate traffic:**
 For simplicity the script listens to sample port 9001. In order to generate traffic you can use tools like `nc` and `nmap`.
