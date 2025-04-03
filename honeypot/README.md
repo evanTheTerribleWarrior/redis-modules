@@ -14,15 +14,15 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
 ### 1. Compiling the Module
 
   **Clone the Repository:**
-    ```bash
-    git clone https://github.com/evanTheTerribleWarrior/redis-modules  
-    cd redis-modules  
-    cd honeypot  
-    ```
+```bash
+git clone https://github.com/evanTheTerribleWarrior/redis-modules
+cd redis-modules
+cd honeypot
+```
   **Compile:**
-    ```bash
-    make  
-    ```
+```bash
+make  
+```
     This will create a `honeypot.so` file in the directory and automatically download the redismodule.h library from the official Redis repo, if not present. This library is needed for the module to work.
     
 
@@ -31,16 +31,16 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
   **Locate the Module:** Ensure you know the full path to the compiled `honeypot.so` file.
   
   **Start Redis with the Module:**
-    ```bash
-    redis-server --loadmodule /path/to/honeypot.so
-    ```
+```bash
+redis-server --loadmodule /path/to/honeypot.so
+```
     Replace `/path/to/honeypot.so` with the actual path to your module file.
   
   **Alternative: Load via `redis.conf`:**
     You can also add the following line to your `redis.conf` file:
-    ```
-    loadmodule /path/to/honeypot.so
-    ```
+```
+loadmodule /path/to/honeypot.so
+```
     Then, restart your Redis server.
 
 ### 3. Testing the Module
