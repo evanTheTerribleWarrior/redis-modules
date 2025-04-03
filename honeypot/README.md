@@ -2,6 +2,8 @@
 
 This Redis module, `honeypot`, is designed to detect and log port scan attempts and other suspicious network traffic. Every attempt is logged using RedisJSON functionalities
 
+![Honeypot Image](https://github.com/user-attachments/assets/1cb00a98-6833-48db-b6f4-ff9c43f509df)
+
 ## Requirements
 
 -   Redis Stack (or Redis with the RedisJSON module)
