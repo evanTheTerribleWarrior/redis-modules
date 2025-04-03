@@ -10,10 +10,10 @@
 
 /*
 
-JSON.HONEYPOT - Logs captured IPs and data identified from scan attempts on honeypot ports
+HONEYPOT - Logs captured IPs and data identified from scan attempts on honeypot ports
 
 Definition:
-JSON.HONEYPOT <IP> <PORT> <MESSAGE>
+HONEYPOT <IP> <PORT> <MESSAGE>
 
 JSON object:
 {
