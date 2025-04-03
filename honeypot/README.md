@@ -11,13 +11,13 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
 
 ### 1. Compiling the Module
 
-1.  **Clone the Repository:**
+**Clone the Repository:**
     ```bash
     git clone https://github.com/evanTheTerribleWarrior/redis-modules
     cd redis-modules
     cd honeypot
     ```
-2.  **Compile:**
+**Compile:**
     ```bash
     make
     ```
@@ -26,13 +26,13 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
 
 ### 2. Loading the Module in Redis
 
-1.  **Locate the Module:** Ensure you know the full path to the compiled `honeypot.so` file.
-2.  **Start Redis with the Module:**
+**Locate the Module:** Ensure you know the full path to the compiled `honeypot.so` file.
+**Start Redis with the Module:**
     ```bash
     redis-server --loadmodule /path/to/honeypot.so
     ```
     Replace `/path/to/honeypot.so` with the actual path to your module file.
-3.  **Alternative: Load via `redis.conf`:**
+**Alternative: Load via `redis.conf`:**
     You can also add the following line to your `redis.conf` file:
     ```
     loadmodule /path/to/honeypot.so
@@ -41,26 +41,27 @@ This Redis module, `honeypot`, is designed to detect and log port scan attempts 
 
 ### 3. Testing the Module
 
-1.  **Simulate a Port Scan:**
-    You can use `nmap` or `netcat` to simulate a port scan. For example:
-    ```bash
-    nmap -p 1-1000 <redis-server-ip>
-    ```
-    Or, using `netcat`:
-    ```bash
-    nc -v <redis-server-ip> 1234
-    ```
-    Replace `<redis-server-ip>` with the IP address of your Redis server.
+The provided bash script `capture.sh` could be used as an example to test the module, and adapted as necessary. It uses `tcpdump` with specific flags to capture the traffic and the output is parsed in order to pass the IP, port and full message to the `honeypot` module.
 
-2.  **Check the Logs:**
-    Connect to your Redis server using `redis-cli` and check for logged IPs and the associated details. For example you could create an index with the fields you want to be able to search on
+**Run the test script:**
 
     ```bash
-    redis-cli
-    FT.CREATE idx_honeypot ON JSON PREFIX 1 honeypot: SCHEMA $.ip AS ip TAG $.count AS count NUMERIC
-    FT.SEARCH idx_honeypot "*"
+    bash capture.sh
     ```
-    This will give all the JSON records
+
+**Generate traffic:**
+For simplicity the script listens to sample port 9001. In order to generate traffic you can use tools like `nc` and `nmap`.
+For example:
+
+```bash
+nc 127.0.0.1 9001
+```
+
+```bash
+nmap 127.0.0.1 -p 9001
+```
+
+You can change the flags and ports accordingly to match your needs
 
 ### 4. Expected Output
 
