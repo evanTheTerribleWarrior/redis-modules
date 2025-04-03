@@ -1,0 +1,17 @@
+# Ignore build artifacts
+*.so
+*.o
+*.a
+
+# Ignore Redis module header
+redismodule.h
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Backup/editor files
+*~
+*.swp
