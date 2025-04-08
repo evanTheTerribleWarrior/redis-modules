@@ -2,24 +2,93 @@
 #include <stdlib.h>
 #include <string.h>
 
+// template function for the rename-command checks
+int check_not_renamed_generic(const char *val, const char *original_cmd) {
+    return val == NULL || strlen(val) == 0 || strcmp(val, original_cmd) == 0;
+}
+
+// DEFINE Wrapper for the rename-command checks
+#define DEFINE_RENAME_CHECK_FN(cmdname)                      \
+    int check_##cmdname##_not_renamed(const char *val) {     \
+        return check_not_renamed_generic(val, #cmdname);     \
+    }
+
+// DEFINE Wrapper for the equality check e.g. is protected-mode == "no"?
+#define DEFINE_EQUALS_CHECK_FN(fnname, expected_value)               \
+    int fnname(const char *val) {                                    \
+        return val && strcmp(val, expected_value) == 0;              \
+    }
+
+// DEFINE Wrapper for checking empty value e.g. requirepass == ""?
+#define DEFINE_EMPTY_CHECK_FN(fnname)                      \
+    int fnname(const char *val) {                          \
+        return val == NULL || strlen(val) == 0;            \
+    }
+
+// DEFINE Wrapper for checking if substring exists e.g. bind = 0.0.0.0
+#define DEFINE_CONTAINS_CHECK_FN(fnname, substring)                  \
+    int fnname(const char *val) {                                 \
+        return val && strstr(val, substring);                        \
+    }
+
+DEFINE_RENAME_CHECK_FN(FLUSHALL)
+DEFINE_RENAME_CHECK_FN(CONFIG)
+DEFINE_RENAME_CHECK_FN(DEBUG)
+DEFINE_RENAME_CHECK_FN(MODULE)
+DEFINE_RENAME_CHECK_FN(SCRIPT)
+DEFINE_RENAME_CHECK_FN(KEYS)
+
+DEFINE_EQUALS_CHECK_FN(check_protected_mode_off, "no")
+DEFINE_EQUALS_CHECK_FN(check_appendonly_off, "no")
+DEFINE_EQUALS_CHECK_FN(check_maxmemory_zero, "0")
+DEFINE_EQUALS_CHECK_FN(check_noeviction_policy, "noeviction")
+DEFINE_EQUALS_CHECK_FN(check_port_default, "6379")
+DEFINE_EQUALS_CHECK_FN(check_timeout_not_set, "0")
+DEFINE_EQUALS_CHECK_FN(check_tls_disabled, "0")
+
+DEFINE_EMPTY_CHECK_FN(check_requirepass_missing)
+DEFINE_EMPTY_CHECK_FN(check_aclfile_missing)
+DEFINE_EMPTY_CHECK_FN(check_unixsocket_missing)
+DEFINE_EMPTY_CHECK_FN(check_save_disabled)
+
+DEFINE_CONTAINS_CHECK_FN(check_bind_insecure, "0.0.0.0")
+DEFINE_CONTAINS_CHECK_FN(check_client_buffer_unlimited, "0 0 0")
+
 typedef struct {
     const char *key;
-    const char *insecure_value;
     int (*insecure_check_fn)(const char *value);
     const char *message;
 } RedisConfigStruct;
 
-int check_bind(const char *val) {
-    return val && (strstr(val, "0.0.0.0") || strstr(val, "::"));
-}
+// To categorise the results based on severity, not yet implemented
+typedef enum {
+    SEVERITY_CRITICAL,
+    SEVERITY_WARNING,
+    SEVERITY_INFO
+} SeverityLevel;
+
 
 static const RedisConfigStruct CONFIG_KEYS_RULES[] = {
-    {"requirepass", "", NULL, "requirepass is missing"},
-    {"protected-mode", "no", NULL, "protected-mode is disabled"},
-    {"maxmemory", "0", NULL, "maxmemory is not set"},
-    {"maxmemory-policy", "noeviction", NULL, "noeviction policy is set"},
-    {"bind", NULL, check_bind, "bind listens to all interfaces"},
-    { NULL, NULL, NULL, NULL }
+    {"requirepass", check_requirepass_missing, "requirepass is missing"},
+    {"protected-mode", check_protected_mode_off, "protected-mode is disabled"},
+    {"appendonly", check_appendonly_off, "AOF persistence is disabled"},
+    {"maxmemory", check_maxmemory_zero, "maxmemory is not set"},
+    {"maxmemory-policy", check_noeviction_policy, "noeviction policy is set"},
+    {"aclfile", check_aclfile_missing, "ACL file is not configured"},
+    {"bind", check_bind_insecure, "bind listens to all interfaces"},
+    {"port", check_port_default, "redis port is not changed from default 6379"},
+    {"unixsocket", check_unixsocket_missing, "unixsocket is not configured"},
+    {"save", check_save_disabled, "save is not enabled"},
+    {"rename-command FLUSHALL", check_FLUSHALL_not_renamed, "FLUSHALL command is not renamed"},
+    {"rename-command CONFIG", check_CONFIG_not_renamed, "CONFIG command is not renamed"},
+    {"rename-command DEBUG", check_DEBUG_not_renamed, "DEBUG command is not renamed"},
+    {"rename-command MODULE", check_MODULE_not_renamed, "MODULE command is not renamed"},
+    {"rename-command SCRIPT", check_SCRIPT_not_renamed, "SCRIPT command is not renamed"},
+    {"rename-command KEYS", check_KEYS_not_renamed, "KEYS command is not renamed"},
+    {"timeout", check_timeout_not_set, "Client timeout is not set"},
+    {"tls-port", check_tls_disabled, "TLS encryption is not enabled"},
+    {"client-output-buffer-limit", check_client_buffer_unlimited, "Client output buffer limits are not set"},
+    { NULL, NULL, NULL }
 };
 
 RedisModuleString **create_config_key_args(RedisModuleCtx *ctx, int *count) {
@@ -91,10 +160,8 @@ int SecurityCheck_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
         int is_insecure = 0;
         int nokey;
 
+        // Get the actual value from the config file dictionary for the specific key
         void* dict_value = RedisModule_DictGetC(reply_dict, (void *)CONFIG_KEYS_RULES[i].key, strlen(CONFIG_KEYS_RULES[i].key),&nokey);
-
-        printf("We look at key %s and the value found in dictionary is: %s\n", CONFIG_KEYS_RULES[i].key, (const char*)dict_value);
-        printf("Nokey has value %d\n", nokey);
 
         if (nokey || dict_value == NULL) {
             continue;
@@ -102,18 +169,10 @@ int SecurityCheck_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
         // Then we check if this key has an equivalent insecure value to check against
         // or a checker function (e.g. bind)
-        if (CONFIG_KEYS_RULES[i].insecure_check_fn){
-            is_insecure = CONFIG_KEYS_RULES[i].insecure_check_fn(dict_value);
-        }
-        else if (CONFIG_KEYS_RULES[i].insecure_value) {
-            if (strcmp(dict_value, CONFIG_KEYS_RULES[i].insecure_value) == 0) {
-                is_insecure = 1;
-            }
-        }
+        is_insecure = CONFIG_KEYS_RULES[i].insecure_check_fn(dict_value);
 
         // If the value is insecure, we add the relevant message to the result array
         if (is_insecure) {
-            RedisModule_Log(ctx, "notice", "Insecure config detected: %s = %s", CONFIG_KEYS_RULES[i].key, (const char*)dict_value);
             RedisModule_ReplyWithString(
                 ctx, 
                 RedisModule_CreateString(ctx, CONFIG_KEYS_RULES[i].message , strlen(CONFIG_KEYS_RULES[i].message))
