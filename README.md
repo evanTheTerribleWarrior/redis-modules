@@ -5,6 +5,7 @@ This repo contains custom [Redis Modules](https://redis.io/docs/latest/extend/mo
 ## 📦 Current Modules
 
 - [`honeypot`](honeypot) — Logs port scan attempts and suspicious traffic using RedisJSON.
+- [`security-check`](https://github.com/evanTheTerribleWarrior/redis-modules/tree/main/security-check) — Performs basic security checks on Redis configurations
 
 ### Requirements
 
