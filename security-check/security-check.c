@@ -75,8 +75,6 @@ typedef struct {
     size_t capacity;
 } SeverityGroup;
 
-SeverityGroup critical = {0}, high = {0}, warning = {0};
-
 static const RedisConfigStruct CONFIG_KEYS_RULES[] = {
     {"requirepass", check_requirepass_missing, "requirepass is missing", CRITICAL},
     {"protected-mode", check_protected_mode_off, "protected-mode is disabled", CRITICAL},
@@ -168,76 +166,112 @@ void reply_with_severity_group(RedisModuleCtx *ctx, const char *severity_str, Se
 
 int SecurityCheck_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
-    RedisModule_AutoMemory(ctx);
-    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_LEN);
-
-    // We build one array with all the config parameters we want to check (from CONFIG_KEY_RULES table)
-    // and we will pass it as parameter to the Redis CONFIG GET command)
-    int args_count;
-    RedisModuleString **args_array = create_config_key_args(ctx, &args_count);
-
-    // We get the array reply with all the config keys and their values
-    RedisModuleCallReply *reply = RedisModule_Call(ctx, "CONFIG", "cv", "GET", args_array, args_count);
-    if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ARRAY) {
-        return RedisModule_ReplyWithError(ctx, "ERR failed to fetch config values");
+    if (argc < 2) {
+        RedisModule_WrongArity(ctx);
+        return REDISMODULE_ERR;
     }
 
-    // Build dictionary of key/value pairs from the reply array
-    RedisModuleDict *reply_dict = build_config_dict(ctx, reply);
+     RedisModule_AutoMemory(ctx);
 
-    for (int i = 0; CONFIG_KEYS_RULES[i].key != NULL; i++) {
+    // What check is the user interested in? e.g. CONFIG?
+    char *check_arg = NULL;
 
-        int is_insecure = 0;
-        int nokey;
+    // Check potential arguments to understand what output will be produced
+    // e.g. CONFIG CRITICAL should give the critical issues from the configuration
+    // This should be expanded to cover more use cases
+    if (argv[1] != NULL) {
+        size_t check_type_len;
+        const char *check_type = RedisModule_StringPtrLen(argv[1], &check_type_len);
+        if (strcasecmp(check_type, "CONFIG") == 0) {
+            if (argc < 3) {
+                return RedisModule_ReplyWithError(ctx, "ERR missing severity level: use ALL, CRITICAL, HIGH, or WARNING");
+            }
+            check_arg = "CONFIG";
+        }
+    }
 
-        // Get the actual value from the config file dictionary for the specific key
-        void* dict_value = RedisModule_DictGetC(reply_dict, (void *)CONFIG_KEYS_RULES[i].key, strlen(CONFIG_KEYS_RULES[i].key),&nokey);
+    if (strcasecmp(check_arg, "CONFIG") == 0) {
+        SeverityGroup critical = {0}, high = {0}, warning = {0};
 
-        if (nokey || dict_value == NULL) {
-            continue;
+        size_t config_check_type_len;
+        const char *config_check_type = RedisModule_StringPtrLen(argv[2], &config_check_type_len);
+
+        RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_LEN);
+        // We build one array with all the config parameters we want to check (from CONFIG_KEY_RULES table)
+        // and we will pass it as parameter to the Redis CONFIG GET command)
+        int args_count;
+        RedisModuleString **args_array = create_config_key_args(ctx, &args_count);
+
+        // We get the array reply with all the config keys and their values
+        RedisModuleCallReply *reply = RedisModule_Call(ctx, "CONFIG", "cv", "GET", args_array, args_count);
+        if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ARRAY) {
+            return RedisModule_ReplyWithError(ctx, "ERR failed to fetch config values");
         }
 
-        // We check if the value retrieved is considered insecure by using the relevant function pointer
-        is_insecure = CONFIG_KEYS_RULES[i].insecure_check_fn(dict_value);
+        // Build dictionary of key/value pairs from the reply array
+        RedisModuleDict *reply_dict = build_config_dict(ctx, reply);
 
-        // If the value is insecure, we add the relevant message to the severity group array
-        if (is_insecure) {
 
-            RedisModuleString *msg = RedisModule_CreateString(ctx, CONFIG_KEYS_RULES[i].message, strlen(CONFIG_KEYS_RULES[i].message));
-            switch (CONFIG_KEYS_RULES[i].severity) {
-                case CRITICAL:
-                    add_to_severity_group(&critical, msg);
-                    break;
-                case HIGH:
-                    add_to_severity_group(&high, msg);
-                    break;
-                case WARNING:
-                    add_to_severity_group(&warning, msg);
-                    break;
+        for (int i = 0; CONFIG_KEYS_RULES[i].key != NULL; i++) {
+
+            int is_insecure = 0;
+            int nokey;
+
+            // Get the actual value from the config file dictionary for the specific key
+            void* dict_value = RedisModule_DictGetC(reply_dict, (void *)CONFIG_KEYS_RULES[i].key, strlen(CONFIG_KEYS_RULES[i].key),&nokey);
+
+            if (nokey || dict_value == NULL) {
+                continue;
+            }
+
+            // We check if the value retrieved is considered insecure by using the relevant function pointer
+            is_insecure = CONFIG_KEYS_RULES[i].insecure_check_fn(dict_value);
+
+            // If the value is insecure, we add the relevant message to the severity group array
+            if (is_insecure) {
+
+                RedisModuleString *msg = RedisModule_CreateString(ctx, CONFIG_KEYS_RULES[i].message, strlen(CONFIG_KEYS_RULES[i].message));
+                switch (CONFIG_KEYS_RULES[i].severity) {
+                    case CRITICAL:
+                        add_to_severity_group(&critical, msg);
+                        break;
+                    case HIGH:
+                        add_to_severity_group(&high, msg);
+                        break;
+                    case WARNING:
+                        add_to_severity_group(&warning, msg);
+                        break;
+                }
+
             }
 
         }
 
-    }
+        int group_count = 0;
 
-    int group_count = 0;
+        if (strcasecmp(config_check_type, "CRITICAL") == 0 || strcasecmp(config_check_type, "ALL") == 0) {
+        if (critical.count) {
+            reply_with_severity_group(ctx, "CRITICAL", &critical);
+            group_count++;
+        }
+        }
 
-    if (critical.count) {
-        reply_with_severity_group(ctx, "CRITICAL", &critical);
-        group_count++;
-    }
+        if (strcasecmp(config_check_type, "HIGH") == 0 || strcasecmp(config_check_type, "ALL") == 0) {
+            if (high.count) {
+                reply_with_severity_group(ctx, "HIGH", &high);
+                group_count++;
+            }
+        }
 
-    if (high.count) {
-        reply_with_severity_group(ctx, "HIGH", &high);
-        group_count++;
+        if (strcasecmp(config_check_type, "WARNING") == 0 || strcasecmp(config_check_type, "ALL") == 0) {
+            if (warning.count) {
+                reply_with_severity_group(ctx, "WARNING", &warning);
+                group_count++;
+            }
+        }
+        
+        RedisModule_ReplySetArrayLength(ctx, group_count);
     }
-
-    if (warning.count) {
-        reply_with_severity_group(ctx, "WARNING", &warning);
-        group_count++;
-    }
-    
-    RedisModule_ReplySetArrayLength(ctx, group_count);
     return REDISMODULE_OK;
 }
 
