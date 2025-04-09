@@ -2,7 +2,7 @@
 
 This Redis module, `security-check`, is designed to perform various security checks on Redis data and configurations.
 
-![Security Check Image](https://github.com/user-attachments/assets/d502c3c2-1748-4f55-8d78-11e7144a4c70)
+![Security Check Image](https://github.com/user-attachments/assets/0cd6d86d-aeae-4be8-88e9-436dcb702ab9)
 
 ## Requirements
 
