@@ -31,8 +31,6 @@ int check_not_renamed_generic(const char *val, const char *original_cmd) {
         return val && strstr(val, substring);                        \
     }
 
-#define DEFINE_GROUP_BY_SEVERITY(severity)  \
-
 
 DEFINE_RENAME_CHECK_FN(FLUSHALL)
 DEFINE_RENAME_CHECK_FN(CONFIG)
