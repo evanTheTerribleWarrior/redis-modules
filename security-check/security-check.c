@@ -31,6 +31,9 @@ int check_not_renamed_generic(const char *val, const char *original_cmd) {
         return val && strstr(val, substring);                        \
     }
 
+#define DEFINE_GROUP_BY_SEVERITY(severity)  \
+
+
 DEFINE_RENAME_CHECK_FN(FLUSHALL)
 DEFINE_RENAME_CHECK_FN(CONFIG)
 DEFINE_RENAME_CHECK_FN(DEBUG)
@@ -54,41 +57,49 @@ DEFINE_EMPTY_CHECK_FN(check_save_disabled)
 DEFINE_CONTAINS_CHECK_FN(check_bind_insecure, "0.0.0.0")
 DEFINE_CONTAINS_CHECK_FN(check_client_buffer_unlimited, "0 0 0")
 
+typedef enum {
+    CRITICAL,
+    HIGH,
+    WARNING
+} SeverityLevel;
+
 typedef struct {
     const char *key;
     int (*insecure_check_fn)(const char *value);
     const char *message;
+    SeverityLevel severity;
 } RedisConfigStruct;
 
-// To categorise the results based on severity, not yet implemented
-typedef enum {
-    SEVERITY_CRITICAL,
-    SEVERITY_WARNING,
-    SEVERITY_INFO
-} SeverityLevel;
+// Struct to create severity groups and grow them dynamically
+typedef struct {
+    RedisModuleString **messages;
+    size_t count;
+    size_t capacity;
+} SeverityGroup;
 
+SeverityGroup critical = {0}, high = {0}, warning = {0};
 
 static const RedisConfigStruct CONFIG_KEYS_RULES[] = {
-    {"requirepass", check_requirepass_missing, "requirepass is missing"},
-    {"protected-mode", check_protected_mode_off, "protected-mode is disabled"},
-    {"appendonly", check_appendonly_off, "AOF persistence is disabled"},
-    {"maxmemory", check_maxmemory_zero, "maxmemory is not set"},
-    {"maxmemory-policy", check_noeviction_policy, "noeviction policy is set"},
-    {"aclfile", check_aclfile_missing, "ACL file is not configured"},
-    {"bind", check_bind_insecure, "bind listens to all interfaces"},
-    {"port", check_port_default, "redis port is not changed from default 6379"},
-    {"unixsocket", check_unixsocket_missing, "unixsocket is not configured"},
-    {"save", check_save_disabled, "save is not enabled"},
-    {"rename-command FLUSHALL", check_FLUSHALL_not_renamed, "FLUSHALL command is not renamed"},
-    {"rename-command CONFIG", check_CONFIG_not_renamed, "CONFIG command is not renamed"},
-    {"rename-command DEBUG", check_DEBUG_not_renamed, "DEBUG command is not renamed"},
-    {"rename-command MODULE", check_MODULE_not_renamed, "MODULE command is not renamed"},
-    {"rename-command SCRIPT", check_SCRIPT_not_renamed, "SCRIPT command is not renamed"},
-    {"rename-command KEYS", check_KEYS_not_renamed, "KEYS command is not renamed"},
-    {"timeout", check_timeout_not_set, "Client timeout is not set"},
-    {"tls-port", check_tls_disabled, "TLS encryption is not enabled"},
-    {"client-output-buffer-limit", check_client_buffer_unlimited, "Client output buffer limits are not set"},
-    { NULL, NULL, NULL }
+    {"requirepass", check_requirepass_missing, "requirepass is missing", CRITICAL},
+    {"protected-mode", check_protected_mode_off, "protected-mode is disabled", CRITICAL},
+    {"appendonly", check_appendonly_off, "AOF persistence is disabled", WARNING},
+    {"maxmemory", check_maxmemory_zero, "maxmemory is not set", HIGH},
+    {"maxmemory-policy", check_noeviction_policy, "noeviction policy is set", HIGH},
+    {"aclfile", check_aclfile_missing, "ACL file is not configured", HIGH},
+    {"bind", check_bind_insecure, "bind listens to all interfaces", CRITICAL},
+    {"port", check_port_default, "redis port is not changed from default 6379", WARNING},
+    {"unixsocket", check_unixsocket_missing, "unixsocket is not configured", HIGH},
+    {"save", check_save_disabled, "save is not enabled", WARNING},
+    {"rename-command FLUSHALL", check_FLUSHALL_not_renamed, "FLUSHALL command is not renamed", CRITICAL},
+    {"rename-command CONFIG", check_CONFIG_not_renamed, "CONFIG command is not renamed", HIGH},
+    {"rename-command DEBUG", check_DEBUG_not_renamed, "DEBUG command is not renamed", WARNING},
+    {"rename-command MODULE", check_MODULE_not_renamed, "MODULE command is not renamed", WARNING},
+    {"rename-command SCRIPT", check_SCRIPT_not_renamed, "SCRIPT command is not renamed", HIGH},
+    {"rename-command KEYS", check_KEYS_not_renamed, "KEYS command is not renamed", HIGH},
+    {"timeout", check_timeout_not_set, "Client timeout is not set", HIGH},
+    {"tls-port", check_tls_disabled, "TLS encryption is not enabled", HIGH},
+    {"client-output-buffer-limit", check_client_buffer_unlimited, "Client output buffer limits are not set", HIGH},
+    { NULL, NULL, NULL, 0}
 };
 
 RedisModuleString **create_config_key_args(RedisModuleCtx *ctx, int *count) {
@@ -133,11 +144,31 @@ RedisModuleDict *build_config_dict(RedisModuleCtx *ctx, RedisModuleCallReply *re
     return dict;
 }
 
+// Dynamically expand the array of each severity group with new messages 
+// as issues are discovered that belong to this category
+void add_to_severity_group(SeverityGroup *group, RedisModuleString *msg) {
+    if (group->count == group->capacity) {
+        size_t new_cap = group->capacity == 0 ? 8 : group->capacity * 2;
+        group->messages = RedisModule_Realloc(group->messages, sizeof(RedisModuleString *) * new_cap);
+        group->capacity = new_cap;
+    }
+    group->messages[group->count++] = msg;
+}
+
+void reply_with_severity_group(RedisModuleCtx *ctx, const char *severity_str, SeverityGroup *group) {
+    RedisModule_ReplyWithArray(ctx, 2);
+    RedisModule_ReplyWithSimpleString(ctx, severity_str);
+    RedisModule_ReplyWithArray(ctx, group->count);
+    for (size_t i = 0; i < group->count; i++) {
+        RedisModule_ReplyWithString(ctx, group->messages[i]);
+    }
+}
+
 
 int SecurityCheck_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     RedisModule_AutoMemory(ctx);
-    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_LEN);
 
     // We build one array with all the config parameters we want to check (from CONFIG_KEY_RULES table)
     // and we will pass it as parameter to the Redis CONFIG GET command)
@@ -152,8 +183,6 @@ int SecurityCheck_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
     // Build dictionary of key/value pairs from the reply array
     RedisModuleDict *reply_dict = build_config_dict(ctx, reply);
-
-    int total_issues = 0;
 
     for (int i = 0; CONFIG_KEYS_RULES[i].key != NULL; i++) {
 
@@ -173,16 +202,42 @@ int SecurityCheck_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
         // If the value is insecure, we add the relevant message to the result array
         if (is_insecure) {
-            RedisModule_ReplyWithString(
-                ctx, 
-                RedisModule_CreateString(ctx, CONFIG_KEYS_RULES[i].message , strlen(CONFIG_KEYS_RULES[i].message))
-            );
-            total_issues++;
+
+            RedisModuleString *msg = RedisModule_CreateString(ctx, CONFIG_KEYS_RULES[i].message, strlen(CONFIG_KEYS_RULES[i].message));
+            switch (CONFIG_KEYS_RULES[i].severity) {
+                case CRITICAL:
+                    add_to_severity_group(&critical, msg);
+                    break;
+                case HIGH:
+                    add_to_severity_group(&high, msg);
+                    break;
+                case WARNING:
+                    add_to_severity_group(&warning, msg);
+                    break;
+            }
+
         }
 
     }
+
+    int group_count = 0;
+
+    if (critical.count) {
+        reply_with_severity_group(ctx, "CRITICAL", &critical);
+        group_count++;
+    }
+
+    if (high.count) {
+        reply_with_severity_group(ctx, "HIGH", &high);
+        group_count++;
+    }
+
+    if (warning.count) {
+        reply_with_severity_group(ctx, "WARNING", &warning);
+        group_count++;
+    }
     
-    RedisModule_ReplySetArrayLength(ctx, total_issues);
+    RedisModule_ReplySetArrayLength(ctx, group_count);
     return REDISMODULE_OK;
 }
 
