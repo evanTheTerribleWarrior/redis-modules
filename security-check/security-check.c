@@ -102,6 +102,7 @@ static const RedisConfigStruct CONFIG_KEYS_RULES[] = {
     { NULL, NULL, NULL, 0}
 };
 
+// Prepare a long string with the rules so it can be passed to CONFIG GET as parameter
 RedisModuleString **create_config_key_args(RedisModuleCtx *ctx, int *count) {
     
     int n = 0;
@@ -120,7 +121,8 @@ RedisModuleString **create_config_key_args(RedisModuleCtx *ctx, int *count) {
     return args;
 }
 
-
+// Build key/value dictionary with the CONFIG GET reply so values can be easily
+// retrieved and compared against the rules
 RedisModuleDict *build_config_dict(RedisModuleCtx *ctx, RedisModuleCallReply *reply) {
     
     RedisModuleDict *dict = RedisModule_CreateDict(ctx);
@@ -155,6 +157,7 @@ void add_to_severity_group(SeverityGroup *group, RedisModuleString *msg) {
     group->messages[group->count++] = msg;
 }
 
+// Print arrays of severity groups to the client
 void reply_with_severity_group(RedisModuleCtx *ctx, const char *severity_str, SeverityGroup *group) {
     RedisModule_ReplyWithArray(ctx, 2);
     RedisModule_ReplyWithSimpleString(ctx, severity_str);
@@ -196,11 +199,10 @@ int SecurityCheck_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
             continue;
         }
 
-        // Then we check if this key has an equivalent insecure value to check against
-        // or a checker function (e.g. bind)
+        // We check if the value retrieved is considered insecure by using the relevant function pointer
         is_insecure = CONFIG_KEYS_RULES[i].insecure_check_fn(dict_value);
 
-        // If the value is insecure, we add the relevant message to the result array
+        // If the value is insecure, we add the relevant message to the severity group array
         if (is_insecure) {
 
             RedisModuleString *msg = RedisModule_CreateString(ctx, CONFIG_KEYS_RULES[i].message, strlen(CONFIG_KEYS_RULES[i].message));
